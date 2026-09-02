@@ -3,7 +3,7 @@ import { TopNav } from "@/components/top-nav";
 import { StatCard } from "@/components/stat-card";
 import { AssetIcon } from "@/components/asset-icon";
 import { recentActivity } from "@/lib/mock-data";
-import { usePortfolioData, computeMetrics, portfolioActions, exchangeRates } from "@/lib/portfolio-store";
+import { usePortfolioData, computeMetrics, portfolioActions, exchangeRates, assetCurrency, normalizeToUSD } from "@/lib/portfolio-store";
 import { usd, compactUsd, pct, num } from "@/lib/format";
 import { Wallet, TrendingUp, Activity, Layers, Award, Loader2 } from "lucide-react";
 import { Area, AreaChart, CartesianGrid, Cell, Pie, PieChart, ResponsiveContainer, Tooltip, XAxis, YAxis, BarChart, Bar } from "recharts";
