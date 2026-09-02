@@ -62,10 +62,8 @@ export function AiReportPanel({ isOpen, onClose, report, isLoading, error }: AiR
     URL.revokeObjectURL(url);
   };
 
-  const handleDownloadHTML = () => {
-    if (!report || !contentRef.current) return;
-    const htmlContent = contentRef.current.innerHTML;
-    const styledHtml = [
+  const getStyledHtml = (htmlContent: string) => {
+    return [
       '<!DOCTYPE html>',
       '<html lang="en">',
       '<head>',
@@ -98,6 +96,7 @@ export function AiReportPanel({ isOpen, onClose, report, isLoading, error }: AiR
       '    blockquote { border-left: 4px solid #3b5998; padding-left: 16px; font-style: italic; color: #4a5568; margin: 20px 0; }',
       '    h1, h2, h3, h4 { color: #1a1f36; }',
       '    h3 { border-bottom: 1px solid #e9ecef; padding-bottom: 8px; margin-top: 32px; }',
+      '    .no-print { display: none !important; }',
       '  </style>',
       '</head>',
       '<body>',
@@ -105,11 +104,15 @@ export function AiReportPanel({ isOpen, onClose, report, isLoading, error }: AiR
       '    <h1 style="margin: 0; color: #3b5998;">Folio</h1>',
       '    <p style="margin: 5px 0 0; color: #6c757d; font-size: 14px;">AI Portfolio Analysis Report</p>',
       '  </div>',
-      htmlContent,
+      `  <div id="report-content">${htmlContent}</div>`,
       '</body>',
       '</html>'
     ].join('\n');
+  };
 
+  const handleDownloadHTML = () => {
+    if (!report || !contentRef.current) return;
+    const styledHtml = getStyledHtml(contentRef.current.innerHTML);
     const blob = new Blob([styledHtml], { type: "text/html;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -123,60 +126,34 @@ export function AiReportPanel({ isOpen, onClose, report, isLoading, error }: AiR
     if (!report || !contentRef.current) return;
 
     const toastId = toast.loading("Generating PDF file...");
-    let clone: HTMLElement | null = null;
     
     try {
-      // Resolve html2pdf function safely for Vite/ESM build
       const html2pdfFn = (html2pdf as any).default || html2pdf;
       if (!html2pdfFn) {
         throw new Error("html2pdf library is not loaded properly.");
       }
 
-      // Clone the content element to isolate it from scroll containers, absolute panel position, and transforms
-      const originalElement = contentRef.current;
-      clone = originalElement.cloneNode(true) as HTMLElement;
-
-      // Remove elements not desired in the PDF
-      const noPrintElements = clone.querySelectorAll('.no-print');
-      noPrintElements.forEach(el => el.remove());
-
-      // Prepare styling for off-screen rendering
-      clone.style.position = 'absolute';
-      clone.style.left = '-9999px';
-      clone.style.top = '0';
-      clone.style.width = '800px'; // Consistent layout width
-      clone.style.background = '#ffffff';
-      clone.style.color = '#1a1f36';
-      clone.style.padding = '40px';
-      clone.style.boxSizing = 'border-box';
-      clone.style.height = 'auto';
-
-      document.body.appendChild(clone);
+      const htmlContent = contentRef.current.innerHTML;
+      const styledHtml = getStyledHtml(htmlContent);
 
       const opt = {
         margin:       15,
         filename:     'Folio_Portfolio_Report.pdf',
         image:        { type: 'jpeg' as const, quality: 0.95 },
         html2canvas:  { 
-          scale: 1.5, // 1.5 is standard, prevents Out Of Memory crashes
+          scale: 2,
           useCORS: true,
-          logging: false,
-          letterRendering: true,
-          scrollX: 0,
-          scrollY: 0
+          logging: false
         },
         jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
       };
 
-      await html2pdfFn().from(clone).set(opt).save();
+      // html2pdf can render from a string of HTML
+      await html2pdfFn().from(styledHtml).set(opt).save();
       toast.success("PDF downloaded successfully!", { id: toastId });
     } catch (err: any) {
       console.error("PDF generation failed:", err);
       toast.error(`PDF generation failed: ${err.message || err}`, { id: toastId });
-    } finally {
-      if (clone && clone.parentNode) {
-        clone.parentNode.removeChild(clone);
-      }
     }
   };
 
