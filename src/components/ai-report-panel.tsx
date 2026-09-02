@@ -126,6 +126,7 @@ export function AiReportPanel({ isOpen, onClose, report, isLoading, error }: AiR
     if (!report || !contentRef.current) return;
 
     const toastId = toast.loading("Generating PDF file...");
+    let iframe: HTMLIFrameElement | null = null;
     
     try {
       const html2pdfFn = (html2pdf as any).default || html2pdf;
@@ -136,6 +137,25 @@ export function AiReportPanel({ isOpen, onClose, report, isLoading, error }: AiR
       const htmlContent = contentRef.current.innerHTML;
       const styledHtml = getStyledHtml(htmlContent);
 
+      // Create a hidden iframe to isolate the PDF generation from the parent document's CSS
+      iframe = document.createElement('iframe');
+      iframe.style.position = 'absolute';
+      iframe.style.width = '800px';
+      iframe.style.height = '1000px';
+      iframe.style.left = '-9999px';
+      iframe.style.top = '-9999px';
+      document.body.appendChild(iframe);
+
+      const iframeDoc = iframe.contentWindow?.document;
+      if (!iframeDoc) throw new Error("Could not access iframe document");
+
+      iframeDoc.open();
+      iframeDoc.write(styledHtml);
+      iframeDoc.close();
+
+      // Wait a brief moment to ensure iframe contents (fonts, styles) are parsed
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       const opt = {
         margin:       15,
         filename:     'Folio_Portfolio_Report.pdf',
@@ -143,17 +163,21 @@ export function AiReportPanel({ isOpen, onClose, report, isLoading, error }: AiR
         html2canvas:  { 
           scale: 2,
           useCORS: true,
-          logging: false
+          logging: false,
+          windowWidth: 800
         },
         jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
       };
 
-      // html2pdf can render from a string of HTML
-      await html2pdfFn().from(styledHtml).set(opt).save();
+      await html2pdfFn().from(iframeDoc.body).set(opt).save();
       toast.success("PDF downloaded successfully!", { id: toastId });
     } catch (err: any) {
       console.error("PDF generation failed:", err);
       toast.error(`PDF generation failed: ${err.message || err}`, { id: toastId });
+    } finally {
+      if (iframe && iframe.parentNode) {
+        iframe.parentNode.removeChild(iframe);
+      }
     }
   };
 
