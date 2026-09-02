@@ -2,7 +2,7 @@ import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { TopNav } from "@/components/top-nav";
 import { AssetIcon } from "@/components/asset-icon";
 import { portfolioHistory } from "@/lib/mock-data";
-import { computeMetrics, portfolioActions, portfolioSummary, usePortfolioData, assetCurrency } from "@/lib/portfolio-store";
+import { computeMetrics, portfolioActions, portfolioSummary, usePortfolioData, assetCurrency, normalizeToUSD } from "@/lib/portfolio-store";
 import { usd, pct, num } from "@/lib/format";
 import { ArrowLeft, Loader2, Plus } from "lucide-react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine } from "recharts";

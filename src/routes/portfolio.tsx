@@ -1,7 +1,7 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { TopNav } from "@/components/top-nav";
 import { AssetIcon } from "@/components/asset-icon";
-import { computeMetrics, portfolioActions, usePortfolioData, assetCurrency, type HoldingInput, type StoredHolding } from "@/lib/portfolio-store";
+import { computeMetrics, portfolioActions, usePortfolioData, assetCurrency, normalizeToUSD, type HoldingInput, type StoredHolding } from "@/lib/portfolio-store";
 import type { AssetType } from "@/lib/mock-data";
 import { usd, pct, num } from "@/lib/format";
 import { ArrowUpDown, Pencil, Plus, Trash2, Search, Loader2 } from "lucide-react";
