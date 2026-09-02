@@ -12,6 +12,7 @@ export type WatchlistItem = {
   icon: string;
   color: string;
   type: AssetType;
+  currency?: string;
 };
 
 export type HoldingInput = {
@@ -65,6 +66,37 @@ export let exchangeRates: Record<string, number> = {
   GBP: 0.79,
   JPY: 158.0
 };
+
+/**
+ * Determine the native currency for an asset based on its symbol and DB currency.
+ * Indian stocks (.NS/.BO) are always INR; everything else defaults to USD.
+ */
+export function assetCurrency(symbol: string, dbCurrency?: string): string {
+  const upper = symbol.toUpperCase();
+  if (upper.endsWith(".NS") || upper.endsWith(".BO")) return "INR";
+  if (upper.startsWith("^NSE") || upper.startsWith("^BSESN")) return "INR";
+  return dbCurrency || "USD";
+}
+
+/**
+ * Convert a value from its native currency to USD using exchange rates.
+ * Used for aggregating portfolio values across assets with different currencies.
+ */
+export function normalizeToUSD(value: number, currency: string): number {
+  const upper = currency.toUpperCase();
+  if (upper === "USD") return value;
+  const rate = exchangeRates[upper] ?? 1.0;
+  return value / rate;
+}
+
+/**
+ * Convert a value from one currency to another using exchange rates.
+ */
+export function convertCurrency(value: number, from: string, to: string): number {
+  const usdValue = normalizeToUSD(value, from);
+  const targetRate = exchangeRates[to.toUpperCase()] ?? 1.0;
+  return usdValue * targetRate;
+}
 
 // Private backend sync flags
 let activePortfolioId: string | null = null;
@@ -209,12 +241,9 @@ export function portfolioSummary(holdings: PortfolioState["holdings"]) {
   let value = 0;
   let dayChange = 0;
   for (const h of holdings) {
-    const assetCurrency = h.symbol.toUpperCase().endsWith(".NS") || h.symbol.toUpperCase().endsWith(".BO") ? "INR" : ((h as any).currency || "USD");
-    const rate = exchangeRates[assetCurrency.toUpperCase()] ?? 1.0;
-    
-    // Normalize native prices/values to USD
-    const currentPriceUSD = h.currentPrice / rate;
-    const avgPriceUSD = h.avgPrice / rate;
+    const cur = assetCurrency(h.symbol, (h as any).currency);
+    const currentPriceUSD = normalizeToUSD(h.currentPrice, cur);
+    const avgPriceUSD = normalizeToUSD(h.avgPrice, cur);
     
     const hInvested = h.quantity * avgPriceUSD;
     const hValue = h.quantity * currentPriceUSD;
@@ -288,7 +317,7 @@ export const portfolioActions = {
         region: h.asset.region || "Global",
         purchaseDate: new Date(h.purchaseDate).toISOString().slice(0, 10),
         notes: h.notes || "",
-        currency: h.asset.symbol.toUpperCase().endsWith(".NS") || h.asset.symbol.toUpperCase().endsWith(".BO") ? "INR" : (h.asset.currency || "USD"),
+        currency: assetCurrency(h.asset.symbol, h.asset.currency),
       }));
 
       // 4. Map watchlist
@@ -302,7 +331,7 @@ export const portfolioActions = {
         color: colorForSymbol(w.asset.symbol),
         type: w.asset.type.toLowerCase() as any,
         assetId: w.asset.id,
-        currency: w.asset.symbol.toUpperCase().endsWith(".NS") || w.asset.symbol.toUpperCase().endsWith(".BO") ? "INR" : (w.asset.currency || "USD"),
+        currency: assetCurrency(w.asset.symbol, w.asset.currency),
       }));
 
       // 4.5 Map transactions
@@ -428,7 +457,7 @@ export const portfolioActions = {
         dayChangePct: 0,
         sector: input.type === "crypto" ? "Crypto" : input.type === "etf" ? "Index" : "Other",
         region: input.type === "crypto" ? "Global" : "US",
-        currency: input.symbol.toUpperCase().endsWith(".NS") || input.symbol.toUpperCase().endsWith(".BO") ? "INR" : "USD",
+        currency: assetCurrency(input.symbol),
       };
       nextHoldings = [nextHolding, ...state.holdings];
     }

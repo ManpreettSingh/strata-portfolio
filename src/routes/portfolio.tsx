@@ -1,12 +1,12 @@
 import { createFileRoute, Link, Outlet, useRouterState } from "@tanstack/react-router";
 import { TopNav } from "@/components/top-nav";
 import { AssetIcon } from "@/components/asset-icon";
-import { computeMetrics, portfolioActions, usePortfolioData, currencyConfig, type HoldingInput, type StoredHolding } from "@/lib/portfolio-store";
+import { computeMetrics, portfolioActions, usePortfolioData, assetCurrency, type HoldingInput, type StoredHolding } from "@/lib/portfolio-store";
 import type { AssetType } from "@/lib/mock-data";
 import { usd, pct, num } from "@/lib/format";
 import { ArrowUpDown, Pencil, Plus, Trash2, Search, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { useMemo, useState, useEffect } from "react";
+import { useMemo, useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import { marketApi } from "@/lib/api-client";
@@ -51,7 +51,16 @@ function PortfolioPage() {
     const f = holdings.filter((h) => filter === "all" || h.type === filter);
     return [...f].sort((a, b) => {
       const ma = computeMetrics(a), mb = computeMetrics(b);
-      const get = (h: typeof a, m: typeof ma) => ({ name: h.name, value: m.value, pl: m.pl, plPct: m.plPct, qty: h.quantity }[sortKey]);
+      const get = (h: typeof a, m: typeof ma) => {
+        const cur = assetCurrency(h.symbol, (h as any).currency);
+        return {
+          name: h.name,
+          value: normalizeToUSD(m.value, cur),
+          pl: normalizeToUSD(m.pl, cur),
+          plPct: m.plPct,
+          qty: h.quantity
+        }[sortKey];
+      };
       const av = get(a, ma), bv = get(b, mb);
       if (typeof av === "string") return dir === "asc" ? av.localeCompare(bv as string) : (bv as string).localeCompare(av);
       return dir === "asc" ? (av as number) - (bv as number) : (bv as number) - (av as number);
@@ -246,8 +255,8 @@ function HoldingDialog({
   const [searchQuery, setSearchQuery] = useState("");
   const [results, setResults] = useState<Array<{ symbol: string; name: string; type: string }>>([]);
   const [searching, setSearching] = useState(false);
-
-  const rate = currencyConfig.rate;
+  const [searchError, setSearchError] = useState("");
+  const searchTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const [symbol, setSymbol] = useState(holding?.symbol ?? "");
   const [name, setName] = useState(holding?.name ?? "");
@@ -257,6 +266,7 @@ function HoldingDialog({
   const [quantity, setQuantity] = useState(holding?.quantity ?? 0);
   const [purchaseDate, setPurchaseDate] = useState(holding?.purchaseDate ?? new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState(holding?.notes ?? "");
+  const nativeCurrency = symbol ? assetCurrency(symbol, holding?.currency) : currency;
 
   useEffect(() => {
     if (open) {
@@ -270,37 +280,49 @@ function HoldingDialog({
       setNotes(holding?.notes ?? "");
       setSearchQuery("");
       setResults([]);
+      setSearchError("");
       setSelectedCategory(holding ? (holding.type.toLowerCase() as any) : "stock");
     }
+    return () => {
+      if (searchTimer.current) clearTimeout(searchTimer.current);
+    };
   }, [open, holding]);
 
-  const handleSearch = async (query: string) => {
+  const handleSearch = (query: string) => {
     setSearchQuery(query);
+    setSearchError("");
     if (!query.trim()) {
       setResults([]);
+      if (searchTimer.current) clearTimeout(searchTimer.current);
       return;
     }
-    setSearching(true);
-    try {
-      const res = await marketApi.search(query);
-      const filtered = (res.assets || []).filter((item) => {
-        const typeLower = item.type.toLowerCase();
-        if (selectedCategory === "stock") return typeLower === "stock";
-        if (selectedCategory === "crypto") return typeLower === "crypto";
-        if (selectedCategory === "etf") return typeLower === "etf" || typeLower === "mutual_fund";
-        if (selectedCategory === "commodity") return typeLower === "commodity";
-        if (selectedCategory === "index") return typeLower === "index";
-        return false;
-      });
-      setResults(filtered);
-    } catch (err) {
-      console.error(err);
-    } finally {
-      setSearching(false);
-    }
+    if (searchTimer.current) clearTimeout(searchTimer.current);
+    searchTimer.current = setTimeout(async () => {
+      setSearching(true);
+      try {
+        const res = await marketApi.search(query);
+        const filtered = (res.assets || []).filter((item) => {
+          const typeLower = item.type.toLowerCase();
+          if (selectedCategory === "stock") return typeLower === "stock";
+          if (selectedCategory === "crypto") return typeLower === "crypto";
+          if (selectedCategory === "etf") return typeLower === "etf" || typeLower === "mutual_fund";
+          if (selectedCategory === "commodity") return typeLower === "commodity";
+          if (selectedCategory === "index") return typeLower === "index";
+          return false;
+        });
+        setResults(filtered);
+      } catch (err) {
+        console.error(err);
+        setResults([]);
+        setSearchError("Search failed — could not reach the market data service. Please try again.");
+      } finally {
+        setSearching(false);
+      }
+    }, 350);
   };
 
   const handleSelectAsset = async (asset: { symbol: string; name: string; type: string }) => {
+    if (searchTimer.current) clearTimeout(searchTimer.current);
     setSymbol(asset.symbol);
     setName(asset.name);
     setAssetType(asset.type.toLowerCase() as AssetType);
@@ -385,9 +407,11 @@ function HoldingDialog({
                       key={cat}
                       type="button"
                       onClick={() => {
+                        if (searchTimer.current) clearTimeout(searchTimer.current);
                         setSelectedCategory(cat);
                         setSearchQuery("");
                         setResults([]);
+                        setSearchError("");
                       }}
                       className={cn(
                         "px-3.5 py-1.5 text-xs rounded-full font-medium capitalize transition-all border shrink-0",
@@ -473,7 +497,11 @@ function HoldingDialog({
                   ))}
                 </ul>
               ) : (
+                !searching && searchError ? (
+                  <div className="text-center py-6 text-sm text-loss">{searchError}</div>
+                ) : (
                 !searching && <div className="text-center py-6 text-sm text-muted-foreground">No matching {selectedCategory}s found. Try searching globally or select another tab.</div>
+                )
               )}
             </div>
           ) : (
@@ -521,7 +549,7 @@ function HoldingDialog({
                     placeholder="0.00"
                   />
                 </Field>
-                <Field label={`Average buy price (${currency})`}>
+                <Field label={`Average buy price (${nativeCurrency})`}>
                   <input
                     type="number"
                     step="any"
@@ -531,7 +559,7 @@ function HoldingDialog({
                     placeholder="0.00"
                   />
                 </Field>
-                <Field label={`Current price (${currency})`}>
+                <Field label={`Current price (${nativeCurrency})`}>
                   <input
                     type="number"
                     step="any"

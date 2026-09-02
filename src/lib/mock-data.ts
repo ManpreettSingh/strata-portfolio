@@ -13,17 +13,18 @@ export interface Holding {
   dayChangePct: number;
   sector?: string;
   region?: string;
+  currency?: string;
 }
 
 export const holdings: Holding[] = [
-  { id: "1", symbol: "BTC", name: "Bitcoin", type: "crypto", icon: "₿", color: "#f7931a", quantity: 0.482, avgPrice: 38400, currentPrice: 67230, dayChangePct: -1.12, sector: "Crypto", region: "Global" },
-  { id: "2", symbol: "ETH", name: "Ethereum", type: "crypto", icon: "Ξ", color: "#627eea", quantity: 4.2, avgPrice: 2150, currentPrice: 3480, dayChangePct: -0.55, sector: "Crypto", region: "Global" },
-  { id: "3", symbol: "SOL", name: "Solana", type: "crypto", icon: "◎", color: "#9945ff", quantity: 38, avgPrice: 78.2, currentPrice: 168.4, dayChangePct: 3.12, sector: "Crypto", region: "Global" },
-  { id: "4", symbol: "RELIANCE", name: "Reliance Industries", type: "stock", icon: "R", color: "#0052cc", quantity: 15, avgPrice: 2450, currentPrice: 2680, dayChangePct: 0.85, sector: "Energy", region: "India" },
-  { id: "5", symbol: "TCS", name: "Tata Consultancy Services", type: "stock", icon: "T", color: "#0077b6", quantity: 10, avgPrice: 3720, currentPrice: 3890, dayChangePct: 1.25, sector: "IT", region: "India" },
-  { id: "6", symbol: "INFY", name: "Infosys", type: "stock", icon: "I", color: "#007cc3", quantity: 25, avgPrice: 1520, currentPrice: 1645, dayChangePct: 0.65, sector: "IT", region: "India" },
-  { id: "7", symbol: "DOGE", name: "Dogecoin", type: "crypto", icon: "Ð", color: "#c2a633", quantity: 15000, avgPrice: 0.085, currentPrice: 0.158, dayChangePct: -1.84, sector: "Crypto", region: "Global" },
-  { id: "8", symbol: "LINK", name: "Chainlink", type: "crypto", icon: "⬡", color: "#375bd2", quantity: 120, avgPrice: 12.4, currentPrice: 15.6, dayChangePct: 2.34, sector: "Crypto", region: "Global" },
+  { id: "1", symbol: "BTC", name: "Bitcoin", type: "crypto", icon: "₿", color: "#f7931a", quantity: 0.482, avgPrice: 38400, currentPrice: 67230, dayChangePct: -1.12, sector: "Crypto", region: "Global", currency: "USD" },
+  { id: "2", symbol: "ETH", name: "Ethereum", type: "crypto", icon: "Ξ", color: "#627eea", quantity: 4.2, avgPrice: 2150, currentPrice: 3480, dayChangePct: -0.55, sector: "Crypto", region: "Global", currency: "USD" },
+  { id: "3", symbol: "SOL", name: "Solana", type: "crypto", icon: "◎", color: "#9945ff", quantity: 38, avgPrice: 78.2, currentPrice: 168.4, dayChangePct: 3.12, sector: "Crypto", region: "Global", currency: "USD" },
+  { id: "4", symbol: "RELIANCE", name: "Reliance Industries", type: "stock", icon: "R", color: "#0052cc", quantity: 15, avgPrice: 2450, currentPrice: 2680, dayChangePct: 0.85, sector: "Energy", region: "India", currency: "INR" },
+  { id: "5", symbol: "TCS", name: "Tata Consultancy Services", type: "stock", icon: "T", color: "#0077b6", quantity: 10, avgPrice: 3720, currentPrice: 3890, dayChangePct: 1.25, sector: "IT", region: "India", currency: "INR" },
+  { id: "6", symbol: "INFY", name: "Infosys", type: "stock", icon: "I", color: "#007cc3", quantity: 25, avgPrice: 1520, currentPrice: 1645, dayChangePct: 0.65, sector: "IT", region: "India", currency: "INR" },
+  { id: "7", symbol: "DOGE", name: "Dogecoin", type: "crypto", icon: "Ð", color: "#c2a633", quantity: 15000, avgPrice: 0.085, currentPrice: 0.158, dayChangePct: -1.84, sector: "Crypto", region: "Global", currency: "USD" },
+  { id: "8", symbol: "LINK", name: "Chainlink", type: "crypto", icon: "⬡", color: "#375bd2", quantity: 120, avgPrice: 12.4, currentPrice: 15.6, dayChangePct: 2.34, sector: "Crypto", region: "Global", currency: "USD" },
 ];
 
 export function computeMetrics(h: Holding) {
@@ -92,12 +93,12 @@ export function sparkline(seed: number, points = 24) {
 }
 
 export const watchlist = [
-  { symbol: "HDFCBANK", name: "HDFC Bank", price: 1685, change: 0.65, icon: "H", color: "#004c8f" },
-  { symbol: "ICICIBANK", name: "ICICI Bank", price: 1125, change: 1.12, icon: "I", color: "#f58220" },
-  { symbol: "MATIC", name: "Polygon", price: 0.62, change: -1.14, icon: "P", color: "#8247e5" },
-  { symbol: "LTC", name: "Litecoin", price: 78.4, change: -0.84, icon: "Ł", color: "#bfbfbf" },
-  { symbol: "UNI", name: "Uniswap", price: 7.82, change: 4.12, icon: "U", color: "#ff007a" },
-  { symbol: "BAJFINANCE", name: "Bajaj Finance", price: 6825, change: 0.85, icon: "B", color: "#003d6a" },
+  { symbol: "HDFCBANK", name: "HDFC Bank", price: 1685, change: 0.65, icon: "H", color: "#004c8f", currency: "INR" },
+  { symbol: "ICICIBANK", name: "ICICI Bank", price: 1125, change: 1.12, icon: "I", color: "#f58220", currency: "INR" },
+  { symbol: "MATIC", name: "Polygon", price: 0.62, change: -1.14, icon: "P", color: "#8247e5", currency: "USD" },
+  { symbol: "LTC", name: "Litecoin", price: 78.4, change: -0.84, icon: "Ł", color: "#bfbfbf", currency: "USD" },
+  { symbol: "UNI", name: "Uniswap", price: 7.82, change: 4.12, icon: "U", color: "#ff007a", currency: "USD" },
+  { symbol: "BAJFINANCE", name: "Bajaj Finance", price: 6825, change: 0.85, icon: "B", color: "#003d6a", currency: "INR" },
 ];
 
 export const recentActivity = [

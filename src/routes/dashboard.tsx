@@ -99,7 +99,11 @@ function DashboardPage() {
   }, [liveHoldings]);
 
   const sorted = useMemo(() => {
-    return [...liveHoldings].sort((a, b) => b.value - a.value);
+    return [...liveHoldings].sort((a, b) => {
+      const curA = assetCurrency(a.symbol, (a as any).currency);
+      const curB = assetCurrency(b.symbol, (b as any).currency);
+      return normalizeToUSD(b.value, curB) - normalizeToUSD(a.value, curA);
+    });
   }, [liveHoldings]);
 
   const best = useMemo(() => {
@@ -413,7 +417,8 @@ function AllocationChart() {
   const { holdings } = usePortfolioData();
   const byType = holdings.reduce<Record<string, number>>((acc, h) => {
     const m = computeMetrics(h);
-    acc[h.type] = (acc[h.type] ?? 0) + m.value;
+    const cur = assetCurrency(h.symbol, (h as any).currency);
+    acc[h.type] = (acc[h.type] ?? 0) + normalizeToUSD(m.value, cur);
     return acc;
   }, {});
   const data = Object.entries(byType).map(([k, v]) => ({ name: k.toUpperCase(), value: Math.round(v) }));
@@ -619,7 +624,11 @@ function HealthScore({ holdings }: { holdings: ReturnType<typeof usePortfolioDat
 
     const metrics = holdings.map((h) => ({
       type: h.type,
-      value: computeMetrics(h).value,
+      value: (() => {
+        const m = computeMetrics(h);
+        const cur = assetCurrency(h.symbol, (h as any).currency);
+        return normalizeToUSD(m.value, cur);
+      })(),
     }));
     const totalValue = metrics.reduce((sum, m) => sum + m.value, 0);
 
@@ -802,7 +811,7 @@ function ActivityFeed() {
                 <div className="text-sm"><span className="font-medium">{a.type}</span> · {a.symbol}</div>
                 <div className="text-xs text-muted-foreground">
                   {(() => {
-                    const actCurrency = a.symbol.toUpperCase().endsWith(".NS") || a.symbol.toUpperCase().endsWith(".BO") ? "INR" : "USD";
+                    const actCurrency = assetCurrency(a.symbol);
                     return a.type === "Watchlist" ? (
                       `Added to watchlist @ ${usd(a.price, { fromCurrency: actCurrency })} · ${formatTimeAgo(a.timestamp)}`
                     ) : a.type === "Update" ? (
@@ -815,7 +824,7 @@ function ActivityFeed() {
               </div>
               <div className="text-sm num text-muted-foreground">
                 {(() => {
-                  const actCurrency = a.symbol.toUpperCase().endsWith(".NS") || a.symbol.toUpperCase().endsWith(".BO") ? "INR" : "USD";
+                  const actCurrency = assetCurrency(a.symbol);
                   return a.type === "Watchlist" || a.type === "Update" ? "—" : usd(a.amount * a.price, { fromCurrency: actCurrency, maximumFractionDigits: 0 });
                 })()}
               </div>

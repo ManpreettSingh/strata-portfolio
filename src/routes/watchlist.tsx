@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { TopNav } from "@/components/top-nav";
 import { AssetIcon } from "@/components/asset-icon";
 import { sparkline } from "@/lib/mock-data";
-import { portfolioActions, usePortfolioData, type WatchlistItem } from "@/lib/portfolio-store";
+import { portfolioActions, usePortfolioData, type WatchlistItem, assetCurrency } from "@/lib/portfolio-store";
 import { usd, pct } from "@/lib/format";
 import { Plus, Trash2, Search, Loader2 } from "lucide-react";
 import { Line, LineChart, ResponsiveContainer } from "recharts";
@@ -159,7 +159,7 @@ function WatchlistCard({ item, index, fallbackPrice, fallbackChange }: Watchlist
                 direction === "down" && "bg-loss/20 text-loss scale-105"
               )}
             >
-              {usd(price)}
+              {usd(price, { fromCurrency: assetCurrency(item.symbol, item.currency) })}
             </div>
             <div className={cn("text-xs font-medium num mt-1", changePercent >= 0 ? "text-gain" : "text-loss")}>
               {changePercent >= 0 ? "+" : ""}{pct(changePercent)} today

@@ -1,3 +1,5 @@
+import { marketApi } from "./api-client";
+
 type TickerUpdate = {
   price: number;
   changePercent: number;
@@ -20,6 +22,13 @@ class LivePriceSocket {
   private stockSubscribedSymbols = new Set<string>();
   private stockReconnectTimeout: any = null;
 
+  // ─── REST Fallback Polling ──────────────────────────────────────────
+  // Keeps prices moving even when a WebSocket can't connect (e.g. Binance
+  // blocked on the network, or the backend /stocks relay is unreachable).
+  private activeSubs = new Map<string, { symbol: string; type: string }>();
+  private lastTick = new Map<string, number>();
+  private fallbackPollTimer: ReturnType<typeof setInterval> | null = null;
+
   private getStockUrl() {
     const base = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
     return base.replace(/^http/, "ws") + "/stocks";
@@ -34,7 +43,7 @@ class LivePriceSocket {
 
     this.cryptoWs.onopen = () => {
       console.log("[LivePriceSocket] Binance WebSocket connected.");
-      
+
       if (this.cryptoSubscribedStreams.size > 0) {
         this.sendCryptoJSON({
           method: "SUBSCRIBE",
@@ -51,8 +60,9 @@ class LivePriceSocket {
           const streamName = payload.stream;
           const price = parseFloat(payload.data.c);
           const changePercent = parseFloat(payload.data.P);
-          
+
           if (!isNaN(price) && !isNaN(changePercent)) {
+            this.lastTick.set(streamName, Date.now());
             const streamListeners = this.cryptoListeners.get(streamName);
             if (streamListeners) {
               streamListeners.forEach((listener) =>
@@ -96,7 +106,7 @@ class LivePriceSocket {
 
     this.stockWs.onopen = () => {
       console.log("[LivePriceSocket] Backend Stocks WebSocket connected.");
-      
+
       if (this.stockSubscribedSymbols.size > 0) {
         this.sendStockJSON({
           type: "subscribe",
@@ -113,15 +123,19 @@ class LivePriceSocket {
           const upperSym = symbol.toUpperCase();
           const rawSymbol = upperSym.replace(".NS", "");
 
+          const now = Date.now();
+
           // Notify exact match (e.g. RELIANCE.NS)
           const symListeners = this.stockListeners.get(upperSym);
           if (symListeners) {
+            this.lastTick.set(upperSym, now);
             symListeners.forEach(listener => listener({ price, changePercent }));
           }
 
           // Notify raw match (e.g. RELIANCE)
           const rawListeners = this.stockListeners.get(rawSymbol);
           if (rawListeners) {
+            this.lastTick.set(rawSymbol, now);
             rawListeners.forEach(listener => listener({ price, changePercent }));
           }
         }
@@ -150,6 +164,58 @@ class LivePriceSocket {
     }
   }
 
+  // ─── REST Fallback Polling ──────────────────────────────────────────
+  private ensureFallbackPolling() {
+    if (typeof window === "undefined" || this.fallbackPollTimer) return;
+    this.fallbackPollTimer = setInterval(() => this.runFallbackPoll(), 10000);
+  }
+
+  private stopFallbackPolling() {
+    if (this.fallbackPollTimer) {
+      clearInterval(this.fallbackPollTimer);
+      this.fallbackPollTimer = null;
+    }
+  }
+
+  private getListeners(key: string): Set<Listener> {
+    return this.cryptoListeners.get(key) || this.stockListeners.get(key) || new Set();
+  }
+
+  private async runFallbackPoll() {
+    const staleCutoff = Date.now() - 12000;
+    const symbolsToRefresh: string[] = [];
+    const seenSymbols = new Set<string>();
+
+    this.activeSubs.forEach((info, key) => {
+      const last = this.lastTick.get(key) ?? 0;
+      if (last < staleCutoff && !seenSymbols.has(info.symbol)) {
+        seenSymbols.add(info.symbol);
+        symbolsToRefresh.push(info.symbol);
+      }
+    });
+
+    if (symbolsToRefresh.length === 0) return;
+
+    try {
+      const res = await marketApi.quotes(symbolsToRefresh);
+      const now = Date.now();
+      (res?.quotes || []).forEach((q) => {
+        if (!q || !q.price) return;
+        const qSym = q.symbol.toUpperCase();
+        this.activeSubs.forEach((info, key) => {
+          if (info.symbol.toUpperCase() === qSym) {
+            const listeners = this.getListeners(key);
+            if (listeners.size === 0) return;
+            this.lastTick.set(key, now);
+            listeners.forEach((l) => l({ price: q.price, changePercent: q.changePercent ?? 0 }));
+          }
+        });
+      });
+    } catch (err) {
+      // WebSocket is the primary path; this fallback is best-effort.
+    }
+  }
+
   // ─── Public Subscription API ────────────────────────────────────────
   public subscribe(symbol: string, type: string, listener: Listener) {
     const isCrypto = type.toLowerCase() === "crypto";
@@ -158,13 +224,14 @@ class LivePriceSocket {
     if (isCrypto) {
       // Binance stream names must be lowercase
       const streamName = `${symbol.toLowerCase()}usdt@ticker`;
-      
+
       let streamListeners = this.cryptoListeners.get(streamName);
       if (!streamListeners) {
         streamListeners = new Set();
         this.cryptoListeners.set(streamName, streamListeners);
       }
       streamListeners.add(listener);
+      this.activeSubs.set(streamName, { symbol: upperSymbol, type });
 
       if (!this.cryptoSubscribedStreams.has(streamName)) {
         this.cryptoSubscribedStreams.add(streamName);
@@ -175,6 +242,8 @@ class LivePriceSocket {
         });
       }
 
+      this.ensureFallbackPolling();
+
       return () => {
         const listenersSet = this.cryptoListeners.get(streamName);
         if (listenersSet) {
@@ -182,7 +251,9 @@ class LivePriceSocket {
           if (listenersSet.size === 0) {
             this.cryptoListeners.delete(streamName);
             this.cryptoSubscribedStreams.delete(streamName);
-            
+            this.activeSubs.delete(streamName);
+            this.lastTick.delete(streamName);
+
             this.sendCryptoJSON({
               method: "UNSUBSCRIBE",
               params: [streamName],
@@ -190,6 +261,7 @@ class LivePriceSocket {
             });
           }
         }
+        if (this.activeSubs.size === 0) this.stopFallbackPolling();
       };
     } else {
       // Equities/Stocks
@@ -199,6 +271,7 @@ class LivePriceSocket {
         this.stockListeners.set(upperSymbol, symbolListeners);
       }
       symbolListeners.add(listener);
+      this.activeSubs.set(upperSymbol, { symbol: upperSymbol, type });
 
       if (!this.stockSubscribedSymbols.has(upperSymbol)) {
         this.stockSubscribedSymbols.add(upperSymbol);
@@ -208,6 +281,8 @@ class LivePriceSocket {
         });
       }
 
+      this.ensureFallbackPolling();
+
       return () => {
         const listenersSet = this.stockListeners.get(upperSymbol);
         if (listenersSet) {
@@ -215,6 +290,8 @@ class LivePriceSocket {
           if (listenersSet.size === 0) {
             this.stockListeners.delete(upperSymbol);
             this.stockSubscribedSymbols.delete(upperSymbol);
+            this.activeSubs.delete(upperSymbol);
+            this.lastTick.delete(upperSymbol);
 
             this.sendStockJSON({
               type: "unsubscribe",
@@ -222,6 +299,7 @@ class LivePriceSocket {
             });
           }
         }
+        if (this.activeSubs.size === 0) this.stopFallbackPolling();
       };
     }
   }

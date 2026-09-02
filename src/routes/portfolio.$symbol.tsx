@@ -2,7 +2,7 @@ import { createFileRoute, Link, notFound } from "@tanstack/react-router";
 import { TopNav } from "@/components/top-nav";
 import { AssetIcon } from "@/components/asset-icon";
 import { portfolioHistory } from "@/lib/mock-data";
-import { computeMetrics, portfolioActions, portfolioSummary, usePortfolioData } from "@/lib/portfolio-store";
+import { computeMetrics, portfolioActions, portfolioSummary, usePortfolioData, assetCurrency } from "@/lib/portfolio-store";
 import { usd, pct, num } from "@/lib/format";
 import { ArrowLeft, Loader2, Plus } from "lucide-react";
 import { Area, AreaChart, Bar, BarChart, CartesianGrid, ResponsiveContainer, Tooltip, XAxis, YAxis, ReferenceLine } from "recharts";
@@ -38,7 +38,7 @@ function AssetDetail() {
   // Find in watchlist if user has it watched
   const w = watchlist.find((x) => x.symbol.toUpperCase() === symbol.toUpperCase());
 
-  const currency = symbol.toUpperCase().endsWith(".NS") || symbol.toUpperCase().endsWith(".BO") ? "INR" : ((h as any)?.currency ?? (w as any)?.currency ?? "USD");
+  const currency = assetCurrency(symbol, (h as any)?.currency ?? (w as any)?.currency);
 
   const [liveQuote, setLiveQuote] = useState<{ price: number; changePercent: number } | null>(null);
   const [news, setNews] = useState<Array<{ title: string; link: string; source: string; pubDate: string }>>([]);
@@ -76,7 +76,7 @@ function AssetDetail() {
   }, [h, quantity, avgPrice, price]);
 
   const s = portfolioSummary(holdings);
-  const allocation = s.value > 0 ? (m.value / s.value) * 100 : 0;
+  const allocation = s.value > 0 ? (normalizeToUSD(m.value, currency) / s.value) * 100 : 0;
 
   const [range, setRange] = useState<"1D" | "1M" | "3M" | "6M" | "1Y">("6M");
   const days = { "1D": 1, "1M": 30, "3M": 90, "6M": 180, "1Y": 365 }[range];

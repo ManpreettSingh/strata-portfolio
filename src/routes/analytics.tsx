@@ -1,7 +1,7 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { TopNav } from "@/components/top-nav";
 import { portfolioHistory } from "@/lib/mock-data";
-import { computeMetrics, usePortfolioData } from "@/lib/portfolio-store";
+import { computeMetrics, usePortfolioData, assetCurrency, normalizeToUSD } from "@/lib/portfolio-store";
 import { usd, pct, smartCompact, fullCurrency } from "@/lib/format";
 import { inferSector, inferRegion } from "@/lib/sector-map";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -107,8 +107,9 @@ function AnalyticsPage() {
     let worstAsset = { name: "—", symbol: "", pct: Infinity };
 
     enrichedHoldings.forEach((h) => {
-      const invested = h.quantity * h.avgPrice;
-      const value = h.quantity * h.currentPrice;
+      const cur = assetCurrency(h.symbol, (h as any).currency);
+      const invested = normalizeToUSD(h.quantity * h.avgPrice, cur);
+      const value = normalizeToUSD(h.quantity * h.currentPrice, cur);
       totalInvested += invested;
       totalValue += value;
       dayChange += value * (h.dayChangePct / 100);
@@ -185,7 +186,8 @@ function AnalyticsPage() {
     let high = 0;
 
     enrichedHoldings.forEach((h) => {
-      const val = h.quantity * h.currentPrice;
+      const cur = assetCurrency(h.symbol, (h as any).currency);
+      const val = normalizeToUSD(h.quantity * h.currentPrice, cur);
       const t = h.type.toLowerCase();
       if (t === "crypto") high += val;
       else if (t === "stock") moderate += val;
@@ -812,7 +814,8 @@ function groupByKey<T extends Record<string, any>>(arr: T[], key: keyof T) {
   for (const item of arr) {
     const k = String(item[key] ?? "Unknown");
     const m = computeMetrics(item as any);
-    map.set(k, (map.get(k) ?? 0) + m.value);
+    const cur = assetCurrency(item.symbol, item.currency);
+    map.set(k, (map.get(k) ?? 0) + normalizeToUSD(m.value, cur));
   }
   return [...map.entries()]
     .map(([name, value]) => ({ name, value: Math.round(value) }))

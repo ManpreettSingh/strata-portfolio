@@ -2,7 +2,7 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import { TopNav } from "@/components/top-nav";
 import { AssetIcon } from "@/components/asset-icon";
 import { sparkline } from "@/lib/mock-data";
-import { usePortfolioData } from "@/lib/portfolio-store";
+import { usePortfolioData, assetCurrency } from "@/lib/portfolio-store";
 import { usd, pct } from "@/lib/format";
 import { Line, LineChart, ResponsiveContainer } from "recharts";
 
@@ -23,8 +23,8 @@ const indices = [
 function MarketsPage() {
   const { holdings, watchlist } = usePortfolioData();
   const all = [
-    ...holdings.map((h) => ({ symbol: h.symbol, name: h.name, price: h.currentPrice, change: h.dayChangePct, color: h.color })),
-    ...watchlist.map((w) => ({ symbol: w.symbol, name: w.name, price: w.price, change: w.change, color: w.color })),
+    ...holdings.map((h) => ({ symbol: h.symbol, name: h.name, price: h.currentPrice, change: h.dayChangePct, color: h.color, currency: assetCurrency(h.symbol, (h as any).currency) })),
+    ...watchlist.map((w) => ({ symbol: w.symbol, name: w.name, price: w.price, change: w.change, color: w.color, currency: assetCurrency(w.symbol, (w as any).currency) })),
   ];
 
   return (
@@ -84,7 +84,7 @@ function MarketsPage() {
                           </div>
                         </Link>
                       </td>
-                      <td className="px-5 py-4 text-right num">{usd(a.price)}</td>
+                      <td className="px-5 py-4 text-right num">{usd(a.price, { fromCurrency: a.currency })}</td>
                       <td className={`px-5 py-4 text-right num font-medium ${a.change >= 0 ? "text-gain" : "text-loss"}`}>{pct(a.change)}</td>
                       <td className="px-5 py-4 text-right hidden md:table-cell">
                         <div className="h-8 w-28 ml-auto">
