@@ -266,6 +266,7 @@ function HoldingDialog({
   const [quantity, setQuantity] = useState(holding?.quantity ?? 0);
   const [purchaseDate, setPurchaseDate] = useState(holding?.purchaseDate ?? new Date().toISOString().slice(0, 10));
   const [notes, setNotes] = useState(holding?.notes ?? "");
+  const [quoteCurrency, setQuoteCurrency] = useState<string | undefined>(undefined);
   const nativeCurrency = symbol ? assetCurrency(symbol, holding?.currency) : currency;
 
   useEffect(() => {
@@ -329,9 +330,13 @@ function HoldingDialog({
     setResults([]);
     setSearchQuery("");
     
-    // Fetch live quote for this symbol to pre-populate prices
+    // Fetch live quote for this symbol to pre-populate prices and its real currency
+    setQuoteCurrency(undefined);
     try {
       const quote = await marketApi.quote(asset.symbol);
+      if (quote && quote.currency) {
+        setQuoteCurrency(quote.currency.toUpperCase());
+      }
       if (quote && quote.price) {
         setCurrentPrice(quote.price);
         setAvgPrice(quote.price);
@@ -376,6 +381,8 @@ function HoldingDialog({
       currentPrice: currentPrice,
       purchaseDate,
       notes: notes.trim(),
+      // Only send a quote-derived currency; leaving it out keeps an edited holding's stored currency.
+      ...(quoteCurrency ? { currency: quoteCurrency } : {}),
     });
     onOpenChange(false);
     setSubmitting(false);

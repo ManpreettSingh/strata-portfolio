@@ -94,10 +94,20 @@ export function useAuth() {
       return u;
     },
 
-    async register(input: { name: string; email: string; password: string }) {
-      const u = await authApi.register(input);
+    /** Step 1 of sign-up: emails a verification code. Does not sign the user in yet. */
+    register(input: { name: string; email: string; password: string }) {
+      return authApi.register(input);
+    },
+
+    /** Step 2 of sign-up: verifies the emailed code, creates the account and signs in. */
+    async verifyRegistration(input: { email: string; code: string }) {
+      const u = await authApi.verifyRegistration(input);
       notifyAuthChange();
       return u;
+    },
+
+    resendRegistrationCode(email: string) {
+      return authApi.resendRegistrationCode(email);
     },
 
     async googleLogin(token: string) {

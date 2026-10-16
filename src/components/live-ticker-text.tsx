@@ -8,9 +8,11 @@ interface LiveTickerTextProps {
   fallbackPrice: number;
   className?: string;
   options?: Intl.NumberFormatOptions;
+  /** Currency the price is quoted in (e.g. "INR" for NSE stocks). Defaults to USD. */
+  currency?: string;
 }
 
-export function LiveTickerText({ symbol, type, fallbackPrice, className, options }: LiveTickerTextProps) {
+export function LiveTickerText({ symbol, type, fallbackPrice, className, options, currency }: LiveTickerTextProps) {
   const { price, direction } = useLiveTicker(symbol, type, fallbackPrice);
 
   return (
@@ -22,7 +24,7 @@ export function LiveTickerText({ symbol, type, fallbackPrice, className, options
         className
       )}
     >
-      {usd(price, options)}
+      {usd(price, { ...options, fromCurrency: currency })}
     </span>
   );
 }

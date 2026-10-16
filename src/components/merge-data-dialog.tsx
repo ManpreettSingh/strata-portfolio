@@ -1,29 +1,33 @@
+import { useState } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
-import { usePortfolioData, portfolioActions } from "@/lib/portfolio-store";
+import { portfolioActions, guestDataSummary } from "@/lib/portfolio-store";
 import { toast } from "sonner";
-import { Package, Trash2 } from "lucide-react";
+import { Package, Trash2, Loader2 } from "lucide-react";
 
 interface MergeDataDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }
 
+/**
+ * Asks what to do with the portfolio saved in this browser while signed out.
+ * Counts come from the saved guest data itself: the live store has already switched to the
+ * signed-in account by now, so reading it here would show an empty (or the wrong) portfolio.
+ */
 export function MergeDataDialog({ open, onOpenChange }: MergeDataDialogProps) {
-  const { holdings, watchlist } = usePortfolioData();
-  const holdingsCount = holdings.length;
-  const watchlistCount = watchlist.length;
-  const hasData = holdingsCount > 0 || watchlistCount > 0;
+  const [busy, setBusy] = useState(false);
+  const { holdings: holdingsCount, watchlist: watchlistCount } = guestDataSummary();
 
-  if (!hasData) return null;
+  if (holdingsCount === 0 && watchlistCount === 0) return null;
 
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
+    <Dialog open={open} onOpenChange={(next) => !busy && onOpenChange(next)}>
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
-          <DialogTitle className="font-display text-xl">Welcome back!</DialogTitle>
+          <DialogTitle className="font-display text-xl">Save your local data?</DialogTitle>
           <DialogDescription className="text-sm text-muted-foreground leading-relaxed mt-2">
-            You have some portfolio data saved from a previous session.
+            You built a portfolio on this device before signing in.
           </DialogDescription>
         </DialogHeader>
 
@@ -34,7 +38,7 @@ export function MergeDataDialog({ open, onOpenChange }: MergeDataDialogProps) {
                 <Package className="h-5 w-5" />
               </div>
               <div>
-                <div className="text-sm font-medium">Saved Data Found</div>
+                <div className="text-sm font-medium">Saved on this device</div>
                 <div className="text-xs text-muted-foreground">
                   {holdingsCount} holding{holdingsCount !== 1 ? "s" : ""}
                   {watchlistCount > 0 ? ` · ${watchlistCount} watchlist item${watchlistCount !== 1 ? "s" : ""}` : ""}
@@ -44,39 +48,45 @@ export function MergeDataDialog({ open, onOpenChange }: MergeDataDialogProps) {
           </div>
 
           <p className="text-sm text-muted-foreground">
-            Would you like to keep this data in your dashboard, or start fresh with a clean portfolio?
+            Add it to your account so it syncs everywhere, or discard it from this device. Closing this keeps it here
+            and we'll ask again next time.
           </p>
         </div>
 
         <DialogFooter className="flex-col sm:flex-row gap-2">
           <Button
             variant="outline"
+            disabled={busy}
             className="gap-2 rounded-full border-loss text-loss hover:bg-loss/10 hover:text-loss"
             onClick={() => {
-              portfolioActions.clearGuestData();
-              toast.success("Portfolio cleared. You're starting fresh!");
+              portfolioActions.discardGuestData();
+              toast.success("Local data discarded from this device.");
               onOpenChange(false);
             }}
           >
             <Trash2 className="h-4 w-4" />
-            Start fresh
+            Discard it
           </Button>
           <Button
+            disabled={busy}
             className="gap-2 rounded-full"
             onClick={async () => {
-              const toastId = toast.loading("Merging your local data to your account...");
+              setBusy(true);
+              const toastId = toast.loading("Adding your local data to your account...");
               try {
                 await portfolioActions.mergeGuestData();
-                toast.success("Your saved data has been successfully merged and synced!", { id: toastId });
+                toast.success("Your local data is now saved to your account.", { id: toastId });
                 onOpenChange(false);
               } catch (err) {
                 console.error(err);
-                toast.error("Failed to merge guest data with your account.", { id: toastId });
+                toast.error("Couldn't save everything. Your local data is still on this device; try again.", { id: toastId });
+              } finally {
+                setBusy(false);
               }
             }}
           >
-            <Package className="h-4 w-4" />
-            Keep my data
+            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : <Package className="h-4 w-4" />}
+            Save to my account
           </Button>
         </DialogFooter>
       </DialogContent>

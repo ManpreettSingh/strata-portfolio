@@ -14,8 +14,6 @@ import {
 } from "lucide-react";
 import { generateReportPDF } from "@/lib/pdf-export";
 import { toast } from "sonner";
-// @ts-ignore
-import html2pdf from "html2pdf.js";
 
 interface AiReportPanelProps {
   isOpen: boolean;
@@ -125,59 +123,13 @@ export function AiReportPanel({ isOpen, onClose, report, isLoading, error }: AiR
   const handleDownloadPDF = async () => {
     if (!report || !contentRef.current) return;
 
-    const toastId = toast.loading("Generating PDF file...");
-    let iframe: HTMLIFrameElement | null = null;
-    
     try {
-      const html2pdfFn = (html2pdf as any).default || html2pdf;
-      if (!html2pdfFn) {
-        throw new Error("html2pdf library is not loaded properly.");
-      }
-
-      const htmlContent = contentRef.current.innerHTML;
-      const styledHtml = getStyledHtml(htmlContent);
-
-      // Create a hidden iframe to isolate the PDF generation from the parent document's CSS
-      iframe = document.createElement('iframe');
-      iframe.style.position = 'absolute';
-      iframe.style.width = '800px';
-      iframe.style.height = '1000px';
-      iframe.style.left = '-9999px';
-      iframe.style.top = '-9999px';
-      document.body.appendChild(iframe);
-
-      const iframeDoc = iframe.contentWindow?.document;
-      if (!iframeDoc) throw new Error("Could not access iframe document");
-
-      iframeDoc.open();
-      iframeDoc.write(styledHtml);
-      iframeDoc.close();
-
-      // Wait a brief moment to ensure iframe contents (fonts, styles) are parsed
-      await new Promise(resolve => setTimeout(resolve, 500));
-
-      const opt = {
-        margin:       15,
-        filename:     'Folio_Portfolio_Report.pdf',
-        image:        { type: 'jpeg' as const, quality: 0.95 },
-        html2canvas:  { 
-          scale: 2,
-          useCORS: true,
-          logging: false,
-          windowWidth: 800
-        },
-        jsPDF:        { unit: 'mm' as const, format: 'a4' as const, orientation: 'portrait' as const }
-      };
-
-      await html2pdfFn().from(iframeDoc.body).set(opt).save();
-      toast.success("PDF downloaded successfully!", { id: toastId });
+      // Opens the browser's print dialog with a styled A4 layout; choose "Save as PDF" as the printer.
+      await generateReportPDF(contentRef.current, "Folio_Portfolio_Report");
+      toast.info('In the print window choose "Save as PDF" to download the report.');
     } catch (err: any) {
       console.error("PDF generation failed:", err);
-      toast.error(`PDF generation failed: ${err.message || err}`, { id: toastId });
-    } finally {
-      if (iframe && iframe.parentNode) {
-        iframe.parentNode.removeChild(iframe);
-      }
+      toast.error(`PDF generation failed: ${err.message || err}`);
     }
   };
 

@@ -5,7 +5,7 @@
  * All methods throw an Error with the server-provided message on failure.
  */
 
-import { getAuthToken } from "./api";
+import { getAuthToken, setAuthToken } from "./api";
 
 const BASE = import.meta.env.VITE_API_BASE_URL ?? "http://localhost:4000";
 
@@ -24,6 +24,17 @@ async function request<T>(path: string, options: RequestInit = {}): Promise<T> {
 
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
+
+    // A rejected token on a protected call means the saved session is stale (expired, or issued
+    // by another server). Clear it so the app returns to a signed-out state instead of failing
+    // every request. Login/register calls legitimately return 401 for wrong credentials.
+    if (response.status === 401 && token && !path.startsWith("/auth/")) {
+      setAuthToken(null);
+      localStorage.removeItem("folio.auth.user");
+      window.dispatchEvent(new Event("folio:auth-change"));
+      throw new Error("Your session has expired. Please sign in again.");
+    }
+
     throw new Error(body.error ?? `Request failed (${response.status})`);
   }
 
@@ -165,6 +176,8 @@ export type PriceQuote = {
   price: number;
   changePercent: number;
   asOf: string;
+  /** ISO currency the price is quoted in, e.g. "INR" or "USD" (provided by the backend). */
+  currency?: string;
 };
 
 export type HistoryPoint = {

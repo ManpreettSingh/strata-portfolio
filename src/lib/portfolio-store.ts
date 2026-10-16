@@ -24,6 +24,8 @@ export type HoldingInput = {
   currentPrice: number;
   purchaseDate: string;
   notes?: string;
+  /** Currency the live quote is priced in (e.g. INR for NSE stocks). Falls back to a symbol guess when absent. */
+  currency?: string;
 };
 
 export type Preferences = {
@@ -224,6 +226,25 @@ function snapshot() {
   return state;
 }
 
+/**
+ * What the signed-out (guest) portfolio saved in this browser contains, read straight from storage.
+ * Used after sign-in, when the live store has already switched to the account's own data.
+ */
+export function guestDataSummary(): { holdings: number; watchlist: number } {
+  if (typeof window === "undefined") return { holdings: 0, watchlist: 0 };
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (!raw) return { holdings: 0, watchlist: 0 };
+    const parsed = JSON.parse(raw);
+    return {
+      holdings: Array.isArray(parsed?.holdings) ? parsed.holdings.length : 0,
+      watchlist: Array.isArray(parsed?.watchlist) ? parsed.watchlist.length : 0,
+    };
+  } catch {
+    return { holdings: 0, watchlist: 0 };
+  }
+}
+
 export function usePortfolioData() {
   return useSyncExternalStore(subscribe, snapshot, () => initialState);
 }
@@ -393,6 +414,11 @@ export const portfolioActions = {
       const guestHoldings = parsed.holdings || [];
       const guestWatchlist = parsed.watchlist || [];
 
+      // Persist what is still un-merged after every item, so a failure part-way through can be
+      // retried without uploading (and double counting) the holdings that already went through.
+      const remaining = { ...parsed, holdings: [...guestHoldings], watchlist: [...guestWatchlist] };
+      const saveRemaining = () => localStorage.setItem(STORAGE_KEY, JSON.stringify(remaining));
+
       // 1. Upload guest holdings to backend
       for (const h of guestHoldings) {
         await portfolioApi.addHolding(portId, {
@@ -404,6 +430,8 @@ export const portfolioActions = {
           purchaseDate: h.purchaseDate ? new Date(h.purchaseDate).toISOString() : new Date().toISOString(),
           notes: h.notes,
         });
+        remaining.holdings = remaining.holdings.filter((x) => x !== h);
+        saveRemaining();
       }
 
       // 2. Upload guest watchlist to backend
@@ -413,6 +441,8 @@ export const portfolioActions = {
           name: w.name,
           assetType: w.type.toUpperCase(),
         });
+        remaining.watchlist = remaining.watchlist.filter((x) => x !== w);
+        saveRemaining();
       }
 
       // 3. Clear guest data in localStorage so we don't merge it again
@@ -457,7 +487,7 @@ export const portfolioActions = {
         dayChangePct: 0,
         sector: input.type === "crypto" ? "Crypto" : input.type === "etf" ? "Index" : "Other",
         region: input.type === "crypto" ? "Global" : "US",
-        currency: assetCurrency(input.symbol),
+        currency: input.currency || assetCurrency(input.symbol),
       };
       nextHoldings = [nextHolding, ...state.holdings];
     }
@@ -636,6 +666,12 @@ export const portfolioActions = {
 
   resetGuestData() {
     writeState(initialState);
+  },
+
+  /** Delete the saved guest (signed-out) portfolio without touching the signed-in account's data. */
+  discardGuestData() {
+    if (typeof window === "undefined") return;
+    localStorage.removeItem(STORAGE_KEY);
   },
 
   clearGuestData() {

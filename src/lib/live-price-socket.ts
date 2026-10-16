@@ -84,7 +84,10 @@ class LivePriceSocket {
       console.log("[LivePriceSocket] Binance WebSocket disconnected. Retrying in 5s...");
       this.cryptoWs = null;
       if (this.cryptoReconnectTimeout) clearTimeout(this.cryptoReconnectTimeout);
-      this.cryptoReconnectTimeout = setTimeout(() => this.connectCrypto(), 5000);
+      // Only reconnect while something is still subscribed.
+      if (this.cryptoSubscribedStreams.size > 0) {
+        this.cryptoReconnectTimeout = setTimeout(() => this.connectCrypto(), 5000);
+      }
     };
   }
 
@@ -120,23 +123,14 @@ class LivePriceSocket {
         const payload = JSON.parse(event.data);
         if (payload && payload.type === "tick" && payload.data) {
           const { symbol, price, changePercent } = payload.data;
-          const upperSym = symbol.toUpperCase();
-          const rawSymbol = upperSym.replace(".NS", "");
+          const upperSym = String(symbol).toUpperCase();
 
-          const now = Date.now();
-
-          // Notify exact match (e.g. RELIANCE.NS)
+          // The server labels each tick with the exact symbol we subscribed to, so match
+          // exactly. Matching "X" against "X.NS" mixed USD and INR prices for dual-listed stocks.
           const symListeners = this.stockListeners.get(upperSym);
           if (symListeners) {
-            this.lastTick.set(upperSym, now);
+            this.lastTick.set(upperSym, Date.now());
             symListeners.forEach(listener => listener({ price, changePercent }));
-          }
-
-          // Notify raw match (e.g. RELIANCE)
-          const rawListeners = this.stockListeners.get(rawSymbol);
-          if (rawListeners) {
-            this.lastTick.set(rawSymbol, now);
-            rawListeners.forEach(listener => listener({ price, changePercent }));
           }
         }
       } catch (err) {
@@ -152,7 +146,9 @@ class LivePriceSocket {
       console.log("[LivePriceSocket] Backend Stocks WebSocket disconnected. Retrying in 5s...");
       this.stockWs = null;
       if (this.stockReconnectTimeout) clearTimeout(this.stockReconnectTimeout);
-      this.stockReconnectTimeout = setTimeout(() => this.connectStock(), 5000);
+      if (this.stockSubscribedSymbols.size > 0) {
+        this.stockReconnectTimeout = setTimeout(() => this.connectStock(), 5000);
+      }
     };
   }
 
@@ -222,8 +218,15 @@ class LivePriceSocket {
     const upperSymbol = symbol.toUpperCase().trim();
 
     if (isCrypto) {
-      // Binance stream names must be lowercase
-      const streamName = `${symbol.toLowerCase()}usdt@ticker`;
+      // Binance stream names must be lowercase and use the bare base asset ("BTC-USD" -> "btc").
+      // Binance only quotes USDT pairs, so INR-quoted symbols get no stream and are kept fresh
+      // by the REST fallback poll instead (a USDT tick would be shown as rupees).
+      // Renamed coins: Binance delisted MATICUSDT (stale price) after Polygon moved to POL.
+      const BINANCE_ALIASES: Record<string, string> = { MATIC: "POL" };
+      const baseUpper = upperSymbol.replace(/-(USD|INR)$/, "");
+      const base = (BINANCE_ALIASES[baseUpper] ?? baseUpper).toLowerCase();
+      const onBinance = !upperSymbol.endsWith("-INR");
+      const streamName = onBinance ? `${base}usdt@ticker` : `${base}-inr@rest`;
 
       let streamListeners = this.cryptoListeners.get(streamName);
       if (!streamListeners) {
@@ -233,7 +236,7 @@ class LivePriceSocket {
       streamListeners.add(listener);
       this.activeSubs.set(streamName, { symbol: upperSymbol, type });
 
-      if (!this.cryptoSubscribedStreams.has(streamName)) {
+      if (onBinance && !this.cryptoSubscribedStreams.has(streamName)) {
         this.cryptoSubscribedStreams.add(streamName);
         this.sendCryptoJSON({
           method: "SUBSCRIBE",
@@ -254,11 +257,13 @@ class LivePriceSocket {
             this.activeSubs.delete(streamName);
             this.lastTick.delete(streamName);
 
-            this.sendCryptoJSON({
-              method: "UNSUBSCRIBE",
-              params: [streamName],
-              id: this.cryptoNextId++,
-            });
+            if (onBinance) {
+              this.sendCryptoJSON({
+                method: "UNSUBSCRIBE",
+                params: [streamName],
+                id: this.cryptoNextId++,
+              });
+            }
           }
         }
         if (this.activeSubs.size === 0) this.stopFallbackPolling();

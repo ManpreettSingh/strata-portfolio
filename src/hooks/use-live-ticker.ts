@@ -18,7 +18,9 @@ export function useLiveTicker(symbol: string, type: string, fallbackPrice: numbe
   }, [fallbackPrice, fallbackChange]);
 
   useEffect(() => {
-    if (type.toLowerCase() !== "crypto" && type.toLowerCase() !== "stock") return;
+    // Every asset type streams: crypto via Binance, everything else (stocks, indices like ^NSEI,
+    // ETFs, commodities) via the backend relay. Filtering by type left indices frozen.
+    if (!symbol) return;
 
     const cleanup = livePriceSocket.subscribe(symbol, type, (update) => {
       setPrice((prevPrice) => {

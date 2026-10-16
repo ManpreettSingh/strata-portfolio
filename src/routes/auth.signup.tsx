@@ -1,10 +1,9 @@
 import { createFileRoute, Link, useNavigate } from "@tanstack/react-router";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { GoogleLogin } from "@react-oauth/google";
-import { MergeDataDialog } from "@/components/merge-data-dialog";
 
 export const Route = createFileRoute("/auth/signup")({
   head: () => ({ meta: [{ title: "Create account - Folio" }] }),
@@ -13,24 +12,20 @@ export const Route = createFileRoute("/auth/signup")({
 
 function SignUpPage() {
   const navigate = useNavigate();
-  const { register, googleLogin } = useAuth();
+  const { register, verifyRegistration, resendRegistrationCode, googleLogin } = useAuth();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [mergeOpen, setMergeOpen] = useState(false);
 
-  function checkGuestDataAndProceed() {
-    const raw = localStorage.getItem("folio.guest.portfolio");
-    if (raw) {
-      try {
-        const data = JSON.parse(raw);
-        if (data.holdings?.length > 0 || data.watchlist?.length > 0) {
-          setMergeOpen(true);
-          return;
-        }
-      } catch {}
-    }
-    navigate({ to: "/dashboard" });
-  }
+  // Step 2 (email code) state. `pendingEmail` being set is what switches the page to the code form.
+  const [pendingEmail, setPendingEmail] = useState<string | null>(null);
+  const [code, setCode] = useState("");
+  const [cooldown, setCooldown] = useState(0);
+
+  useEffect(() => {
+    if (cooldown <= 0) return;
+    const timer = setTimeout(() => setCooldown((s) => s - 1), 1000);
+    return () => clearTimeout(timer);
+  }, [cooldown]);
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -46,15 +41,101 @@ function SignUpPage() {
     else {
       setLoading(true);
       try {
-        await register({ name, email, password });
-        toast.success("Account created");
-        checkGuestDataAndProceed();
+        const started = await register({ name, email, password });
+        setPendingEmail(started.email);
+        setCooldown(started.resendAfterSeconds);
+        setCode("");
+        toast.success(`We emailed a 6-digit code to ${started.email}`);
       } catch (err) {
         setError(err instanceof Error ? err.message : "Could not create account.");
       } finally {
         setLoading(false);
       }
     }
+  }
+
+  async function verify(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!pendingEmail) return;
+    setError("");
+    if (!/^\d{6}$/.test(code)) {
+      setError("Enter the 6-digit code from your email.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await verifyRegistration({ email: pendingEmail, code });
+      toast.success("Email verified. Welcome to Folio!");
+      navigate({ to: "/dashboard" });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not verify the code.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function resend() {
+    if (!pendingEmail || cooldown > 0) return;
+    setError("");
+    try {
+      const started = await resendRegistrationCode(pendingEmail);
+      setCooldown(started.resendAfterSeconds);
+      setCode("");
+      toast.success("A new code is on its way.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not resend the code.");
+    }
+  }
+
+  if (pendingEmail) {
+    return (
+      <div>
+        <h1 className="font-display text-3xl text-navy">Check your email.</h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          We sent a 6-digit code to <span className="font-medium text-foreground">{pendingEmail}</span>. It expires in 10 minutes.
+        </p>
+
+        <form onSubmit={verify} className="mt-8 space-y-4">
+          {error && <div className="rounded-md border border-loss/30 bg-loss/10 px-3 py-2 text-sm text-loss">{error}</div>}
+          <Field label="Verification code">
+            <input
+              value={code}
+              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              autoFocus
+              required
+              placeholder="123456"
+              className="input text-center text-2xl tracking-[0.5em] font-mono"
+            />
+          </Field>
+          <Button type="submit" className="w-full rounded-full" size="lg" disabled={loading || code.length !== 6}>
+            {loading ? "Verifying..." : "Verify and continue"}
+          </Button>
+        </form>
+
+        <div className="mt-6 flex items-center justify-between text-sm text-muted-foreground">
+          <button
+            type="button"
+            onClick={() => {
+              setPendingEmail(null);
+              setError("");
+            }}
+            className="hover:text-foreground"
+          >
+            Use a different email
+          </button>
+          <button
+            type="button"
+            onClick={resend}
+            disabled={cooldown > 0}
+            className="text-primary hover:underline disabled:text-muted-foreground disabled:no-underline"
+          >
+            {cooldown > 0 ? `Resend code in ${cooldown}s` : "Resend code"}
+          </button>
+        </div>
+      </div>
+    );
   }
 
   return (
@@ -68,7 +149,7 @@ function SignUpPage() {
         <Field label="Email"><input name="email" type="email" required placeholder="you@domain.com" className="input" /></Field>
         <Field label="Password"><input name="password" type="password" required placeholder="At least 8 characters" className="input" /></Field>
         <Button type="submit" className="w-full rounded-full" size="lg" disabled={loading}>
-          {loading ? "Creating..." : "Create account"}
+          {loading ? "Sending code..." : "Create account"}
         </Button>
       </form>
 
@@ -84,7 +165,7 @@ function SignUpPage() {
                 try {
                   await googleLogin(credentialResponse.credential);
                   toast.success("Signed in with Google");
-                  checkGuestDataAndProceed();
+                  navigate({ to: "/dashboard" });
                 } catch (err) {
                   setError(err instanceof Error ? err.message : "Google authentication failed.");
                 }
@@ -102,18 +183,9 @@ function SignUpPage() {
         </Link>
       </div>
 
-      <MergeDataDialog
-        open={mergeOpen}
-        onOpenChange={(open) => {
-          setMergeOpen(open);
-          if (!open) navigate({ to: "/dashboard" });
-        }}
-      />
-
       <p className="mt-6 text-[11px] text-muted-foreground leading-relaxed">
         By continuing you agree to Folio's Terms and acknowledge our Privacy Policy.
       </p>
-      
     </div>
   );
 }

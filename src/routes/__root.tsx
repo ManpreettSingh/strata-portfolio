@@ -7,7 +7,7 @@ import {
   HeadContent,
   Scripts,
 } from "@tanstack/react-router";
-import { useEffect, type ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { GoogleOAuthProvider } from "@react-oauth/google";
 
 import appCss from "../styles.css?url";
@@ -15,7 +15,8 @@ import { reportLovableError } from "../lib/lovable-error-reporting";
 import { ThemeProvider } from "../lib/theme";
 import { Toaster } from "@/components/ui/sonner";
 import { useAuth } from "@/hooks/use-auth";
-import { portfolioActions, usePortfolioData } from "@/lib/portfolio-store";
+import { portfolioActions, usePortfolioData, guestDataSummary } from "@/lib/portfolio-store";
+import { MergeDataDialog } from "@/components/merge-data-dialog";
 import { Loader2 } from "lucide-react";
 
 function NotFoundComponent() {
@@ -155,6 +156,33 @@ function AppLoading() {
   );
 }
 
+/**
+ * After sign-in, offers to save the portfolio built while signed out. It lives here, at the root,
+ * because the sign-in page is replaced by the loader while the account syncs, which used to swallow
+ * the dialog (and the redirect that waited on it).
+ */
+function GuestDataPrompt() {
+  const { user, isAuthenticated } = useAuth();
+  const { isSyncing } = usePortfolioData();
+  const [open, setOpen] = useState(false);
+  const promptedFor = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!isAuthenticated || !user || isSyncing) return;
+    if (promptedFor.current === user.id) return; // once per sign-in, not on every background sync
+    const { holdings, watchlist } = guestDataSummary();
+    if (holdings + watchlist === 0) return;
+    promptedFor.current = user.id;
+    setOpen(true);
+  }, [isAuthenticated, user, isSyncing]);
+
+  useEffect(() => {
+    if (!isAuthenticated) promptedFor.current = null;
+  }, [isAuthenticated]);
+
+  return <MergeDataDialog open={open} onOpenChange={setOpen} />;
+}
+
 function AppSyncProvider({ children }: { children: ReactNode }) {
   const { isAuthenticated, isMounted } = useAuth();
   const { isSyncing } = usePortfolioData();
@@ -170,7 +198,12 @@ function AppSyncProvider({ children }: { children: ReactNode }) {
   if (!isMounted) return <AppLoading />;
   if (hasToken && isSyncing) return <AppLoading />;
 
-  return <>{children}</>;
+  return (
+    <>
+      {children}
+      <GuestDataPrompt />
+    </>
+  );
 }
 
 function RootComponent() {

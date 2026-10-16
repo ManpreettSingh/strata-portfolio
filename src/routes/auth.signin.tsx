@@ -4,7 +4,6 @@ import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/hooks/use-auth";
 import { GoogleLogin } from "@react-oauth/google";
-import { MergeDataDialog } from "@/components/merge-data-dialog";
 
 export const Route = createFileRoute("/auth/signin")({
   head: () => ({ meta: [{ title: "Sign in - Folio" }] }),
@@ -16,19 +15,10 @@ function SignInPage() {
   const { login, googleLogin } = useAuth();
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
-  const [mergeOpen, setMergeOpen] = useState(false);
 
-  function checkGuestDataAndProceed() {
-    const raw = localStorage.getItem("folio.guest.portfolio");
-    if (raw) {
-      try {
-        const data = JSON.parse(raw);
-        if (data.holdings?.length > 0 || data.watchlist?.length > 0) {
-          setMergeOpen(true);
-          return;
-        }
-      } catch {}
-    }
+  // Go straight to the dashboard. If this browser holds a signed-out portfolio, the app root asks
+  // whether to save it once the account has loaded (see GuestDataPrompt in __root.tsx).
+  function proceed() {
     navigate({ to: "/dashboard" });
   }
 
@@ -48,7 +38,7 @@ function SignInPage() {
     try {
       await login({ email, password });
       toast.success("Signed in");
-      checkGuestDataAndProceed();
+      proceed();
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sign in failed.");
     } finally {
@@ -84,7 +74,7 @@ function SignInPage() {
                 try {
                   await googleLogin(credentialResponse.credential);
                   toast.success("Signed in with Google");
-                  checkGuestDataAndProceed();
+                  proceed();
                 } catch (err) {
                   setError(err instanceof Error ? err.message : "Google authentication failed.");
                 }
@@ -102,15 +92,6 @@ function SignInPage() {
         </Link>
       </div>
 
-      <MergeDataDialog
-        open={mergeOpen}
-        onOpenChange={(open) => {
-          setMergeOpen(open);
-          if (!open) navigate({ to: "/dashboard" });
-        }}
-      />
-
-      
     </div>
   );
 }

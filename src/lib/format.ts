@@ -56,6 +56,7 @@ export const num = (n: number, digits = 2) =>
 
 /* ── Indian Number Formatting (K / L / Cr) ── */
 function compactIndian(n: number): string {
+  if (n === 0) return "₹0";
   const abs = Math.abs(n);
   const sign = n < 0 ? "-" : "";
   if (abs >= 1e9) return `${sign}₹${(abs / 1e7 / 100).toFixed(1)}Cr`;
@@ -67,6 +68,7 @@ function compactIndian(n: number): string {
 
 /* ── Western Number Formatting (K / M / B) ── */
 function compactWestern(n: number, symbol: string): string {
+  if (n === 0) return `${symbol}0`;
   const abs = Math.abs(n);
   const sign = n < 0 ? "-" : "";
   if (abs >= 1e9) return `${sign}${symbol}${(abs / 1e9).toFixed(1)}B`;

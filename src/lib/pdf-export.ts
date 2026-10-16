@@ -22,12 +22,28 @@ export async function generateReportPDF(
     minute: "2-digit",
   });
 
-  const printWindow = window.open("", "_blank");
+  // Print from a hidden iframe rather than a popup: popup blockers can't stop it, and the
+  // browser's own print engine renders the colours, so no canvas capture is needed (the old
+  // html2pdf/html2canvas path crashed on oklch() colours and froze the page on large reports).
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  frame.style.cssText = "position:fixed;right:0;bottom:0;width:0;height:0;border:0;visibility:hidden;";
+  document.body.appendChild(frame);
+
+  const printWindow = frame.contentWindow;
   if (!printWindow) {
-    alert("Please allow popups to download the PDF report.");
-    return;
+    frame.remove();
+    throw new Error("Could not open the print view for the PDF report.");
   }
 
+  const cleanup = () => {
+    if (frame.parentNode) frame.parentNode.removeChild(frame);
+  };
+  printWindow.addEventListener("afterprint", cleanup);
+  // Safety net in case afterprint never fires (e.g. the user closes the dialog on some browsers).
+  window.setTimeout(cleanup, 5 * 60 * 1000);
+
+  printWindow.document.open();
   printWindow.document.write(`
 <!DOCTYPE html>
 <html lang="en">
@@ -381,11 +397,11 @@ export async function generateReportPDF(
   </div>
 
   <script>
-    // Auto-trigger print dialog
+    // Auto-trigger print dialog once fonts and layout are ready
     window.onload = function() {
       setTimeout(function() {
+        window.focus();
         window.print();
-        setTimeout(function() { window.close(); }, 500);
       }, 300);
     };
   </script>

@@ -24,7 +24,8 @@ function useLiveHoldingsPrices(holdings: any[]) {
   const [liveData, setLiveData] = useState<Record<string, { price: number; changePercent: number }>>({});
 
   useEffect(() => {
-    const targets = holdings.filter(h => h.type.toLowerCase() === "crypto" || h.type.toLowerCase() === "stock");
+    // Subscribe every holding (indices, ETFs, commodities too), not just stocks and crypto.
+    const targets = holdings.filter(h => Boolean(h.symbol));
     if (targets.length === 0) return;
 
     const cleanups: (() => void)[] = [];
@@ -88,9 +89,13 @@ function DashboardPage() {
     let value = 0;
     let dayChange = 0;
     for (const h of liveHoldings) {
-      invested += h.invested;
-      value += h.value;
-      dayChange += h.value * (h.dayChangePct / 100);
+      // Holdings are in their own currency (₹ for NSE stocks, $ for crypto). Bring each to USD
+      // before adding, because the totals are formatted as USD and converted once for display.
+      const cur = assetCurrency(h.symbol, (h as any).currency);
+      const hValueUsd = normalizeToUSD(h.value, cur);
+      invested += normalizeToUSD(h.invested, cur);
+      value += hValueUsd;
+      dayChange += hValueUsd * (h.dayChangePct / 100);
     }
     const totalPL = value - invested;
     const totalPLPct = invested > 0 ? (totalPL / invested) * 100 : 0;
@@ -124,23 +129,30 @@ function DashboardPage() {
     setTimeGreeting(hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening");
   }, []);
   const displayName = user ? user.name.split(" ")[0] : "Guest";
+  const [todayLabel, setTodayLabel] = useState("");
+  useEffect(() => {
+    setTodayLabel(new Date().toLocaleDateString("en-IN", { weekday: "long", day: "numeric", month: "long" }));
+  }, []);
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <TopNav />
-      <main className="mx-auto w-full max-w-[1400px] px-6 py-8 space-y-6">
-        <header className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
+      <main className="stagger mx-auto w-full max-w-[1400px] px-4 sm:px-6 py-8 space-y-6">
+        <header className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
           <div className="min-w-0">
-            <h1 className="font-display text-4xl text-navy truncate">
+            <p className="text-xs font-medium uppercase tracking-[0.14em] text-muted-foreground">
+              {todayLabel}
+            </p>
+            <h1 className="font-display text-4xl sm:text-5xl text-navy truncate mt-1">
               {timeGreeting}, {displayName}.
             </h1>
-            <p className="text-sm text-muted-foreground mt-1">
+            <p className="text-sm text-muted-foreground mt-1.5">
               Here's where your portfolio stands today.
             </p>
           </div>
           <button
             type="button"
-            className="self-start sm:self-end text-xs font-medium text-muted-foreground hover:text-loss transition-colors underline-offset-4 hover:underline"
+            className="self-start sm:self-end rounded-full border border-border bg-card px-3.5 py-1.5 text-xs font-medium text-muted-foreground hover:text-loss hover:border-loss/40 transition-colors"
             onClick={() => {
               if (
                 typeof window !== "undefined" &&
@@ -158,10 +170,26 @@ function DashboardPage() {
         </header>
 
         <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-          <StatCard label="Total value" value={usd(s.value, { maximumFractionDigits: 0 })} delta={s.dayChangePct} deltaLabel="today" icon={<Wallet className="h-4 w-4" />} />
+          <StatCard
+            hero
+            className="md:col-span-2"
+            label="Total value"
+            value={usd(s.value, { maximumFractionDigits: 0 })}
+            delta={s.dayChangePct}
+            deltaLabel="today"
+            icon={<Wallet className="h-4 w-4" />}
+            footer={
+              <>
+                <span className={s.dayChange >= 0 ? "text-gain font-medium num" : "text-loss font-medium num"}>
+                  {s.dayChange >= 0 ? "+" : ""}
+                  {usd(s.dayChange, { maximumFractionDigits: 0 })}
+                </span>{" "}
+                today · invested {compactUsd(s.invested)}
+              </>
+            }
+          />
           <StatCard label="Total profit" value={usd(s.totalPL, { maximumFractionDigits: 0 })} delta={s.totalPLPct} deltaLabel="all time" icon={<TrendingUp className="h-4 w-4" />} />
           <StatCard label="Best performer" value={best ? best.symbol : "—"} delta={best ? bestMetrics.plPct : undefined} deltaLabel={best ? best.name : "No assets yet"} icon={<Award className="h-4 w-4" />} />
-          <StatCard label="Holdings" value={s.count} deltaLabel={s.count === 1 ? "1 asset tracked" : `${s.count} assets tracked`} icon={<Layers className="h-4 w-4" />} />
         </div>
 
 
@@ -177,7 +205,7 @@ function DashboardPage() {
         </div>
 
         <div className="grid gap-6 lg:grid-cols-[1.5fr_1fr]">
-          <div className="rounded-xl border border-border bg-card overflow-hidden">
+          <div className="surface-card overflow-hidden">
             <div className="px-5 py-4 border-b border-border flex items-center justify-between">
               <h3 className="font-medium">Top holdings</h3>
               <Link to="/portfolio" className="text-xs text-primary hover:underline">View all →</Link>
@@ -198,9 +226,13 @@ function DashboardPage() {
         </div>
 
         <div className="grid gap-4 md:grid-cols-3">
-          <MiniStat label="Today's gain/loss" value={usd(s.dayChange, { maximumFractionDigits: 0 })} positive={s.dayChange >= 0} />
+          <MiniStat label="Holdings" value={s.count === 1 ? "1 asset tracked" : `${s.count} assets tracked`} positive={true} muted />
           <MiniStat label="Invested capital" value={compactUsd(s.invested)} positive={true} muted />
-          <MiniStat label="Worst performer" value={worst ? `${worst.symbol} ${pct(worstMetrics.plPct)}` : "—"} positive={false} />
+          <MiniStat
+            label="Lowest return"
+            value={worst ? `${worst.symbol} ${pct(worstMetrics.plPct)}` : "—"}
+            positive={worstMetrics.plPct >= 0}
+          />
         </div>
       </main>
     </div>
@@ -251,9 +283,24 @@ function TopHoldingRow({ h }: { h: any }) {
   );
 }
 
+/** Shimmering bars shown while a chart's data loads, so the card keeps its shape. */
+function ChartSkeleton({ label }: { label: string }) {
+  const heights = [38, 62, 48, 80, 55, 92, 70, 58, 85, 66, 74, 50];
+  return (
+    <div className="h-full flex flex-col justify-end gap-3 px-2 pb-2" role="status" aria-label={label}>
+      <div className="flex flex-1 items-end gap-2">
+        {heights.map((h, i) => (
+          <div key={i} className="skeleton flex-1" style={{ height: `${h}%`, animationDelay: `${i * 80}ms` }} />
+        ))}
+      </div>
+      <span className="sr-only">{label}</span>
+    </div>
+  );
+}
+
 function MiniStat({ label, value, positive, muted }: { label: string; value: string; positive: boolean; muted?: boolean }) {
   return (
-    <div className="rounded-xl border border-border bg-card px-5 py-4">
+    <div className="surface-card px-5 py-4">
       <div className="text-xs uppercase tracking-wider text-muted-foreground">{label}</div>
       <div className={`mt-1 text-lg font-semibold num ${muted ? "" : positive ? "text-gain" : "text-loss"}`}>{value}</div>
     </div>
@@ -355,7 +402,7 @@ function GrowthChart() {
   }, [days, holdingsKey]);
 
   return (
-    <div className="rounded-xl border border-border bg-card lg:col-span-2 overflow-hidden">
+    <div className="surface-card lg:col-span-2 overflow-hidden">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between flex-wrap gap-3">
         <div>
           <h3 className="font-medium">Portfolio growth</h3>
@@ -369,10 +416,7 @@ function GrowthChart() {
       </div>
       <div className="h-72 p-3">
         {loading ? (
-          <div className="h-full flex items-center justify-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
-            Loading price history…
-          </div>
+          <ChartSkeleton label="Loading price history" />
         ) : data.length === 0 ? (
           <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
             No data available. Add holdings to see portfolio growth.
@@ -388,7 +432,7 @@ function GrowthChart() {
               </defs>
               <CartesianGrid stroke="var(--color-border)" vertical={false} />
               <XAxis dataKey="date" tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} tickLine={false} axisLine={false} minTickGap={40} />
-              <YAxis tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} tickLine={false} axisLine={false} tickFormatter={(v) => compactUsd(v as number)} />
+              <YAxis domain={["auto", "auto"]} width={64} tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }} tickLine={false} axisLine={false} tickFormatter={(v) => compactUsd(v as number)} />
               <Tooltip contentStyle={{ background: "var(--color-card)", border: "1px solid var(--color-border)", borderRadius: 8, fontSize: 12, color: "var(--color-foreground)" }} formatter={(v: any) => usd(v, { maximumFractionDigits: 0 })} />
               <Area type="monotone" dataKey="value" stroke="var(--color-primary)" strokeWidth={2} fill="url(#dashG)" />
             </AreaChart>
@@ -425,7 +469,7 @@ function AllocationChart() {
   const COLORS = ["var(--color-chart-1)", "var(--color-chart-2)", "var(--color-chart-3)", "var(--color-chart-5)"];
   const total = data.reduce((a, b) => a + b.value, 0);
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div className="surface-card overflow-hidden">
       <div className="px-5 py-4 border-b border-border">
         <h3 className="font-medium">Allocation</h3>
         <p className="text-xs text-muted-foreground">By asset class</p>
@@ -575,7 +619,7 @@ function DailyBars() {
   }, [holdingsKey]);
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden lg:col-span-1">
+    <div className="surface-card overflow-hidden lg:col-span-1">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between">
         <div>
           <h3 className="font-medium">Daily P/L</h3>
@@ -589,9 +633,13 @@ function DailyBars() {
             No holdings found.
           </div>
         ) : data.length === 0 ? (
-          <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-            {loading ? "Loading daily changes..." : "No historical data available."}
-          </div>
+          loading ? (
+            <ChartSkeleton label="Loading daily changes" />
+          ) : (
+            <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
+              No historical data available.
+            </div>
+          )
         ) : (
           <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
             <BarChart data={data}>
@@ -671,7 +719,7 @@ function HealthScore({ holdings }: { holdings: ReturnType<typeof usePortfolioDat
 
   const circ = 2 * Math.PI * 42;
   return (
-    <div className="rounded-xl border border-border bg-card p-5">
+    <div className="surface-card p-5">
       <h3 className="font-medium">Portfolio health</h3>
       <p className="text-xs text-muted-foreground">Diversification & risk balance</p>
       
@@ -726,7 +774,7 @@ function TopMovers({ holdings }: { holdings: any[] }) {
   }, [sorted]);
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div className="surface-card overflow-hidden">
       <div className="px-5 py-4 border-b border-border flex items-center justify-between">
         <h3 className="font-medium">Top movers</h3>
         <Activity className="h-4 w-4 text-muted-foreground" />
@@ -789,7 +837,7 @@ function ActivityFeed() {
   const list = activity || [];
 
   return (
-    <div className="rounded-xl border border-border bg-card overflow-hidden">
+    <div className="surface-card overflow-hidden">
       <div className="px-5 py-4 border-b border-border">
         <h3 className="font-medium">Recent activity</h3>
       </div>

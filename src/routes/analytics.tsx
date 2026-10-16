@@ -215,7 +215,7 @@ function AnalyticsPage() {
   return (
     <div className="min-h-screen bg-background flex flex-col">
       <TopNav />
-      <main className="mx-auto w-full max-w-[1400px] px-6 py-8 space-y-8">
+      <main className="stagger mx-auto w-full max-w-[1400px] px-4 sm:px-6 py-8 space-y-8">
 
         {/* ── Page Header with AI Report Button ── */}
         <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
@@ -293,7 +293,7 @@ function AnalyticsPage() {
             <KpiCard
               icon={<Trophy className="h-4 w-4" />}
               iconColor="var(--color-success)"
-              label="Best Asset"
+              label="Top Return"
               value={showData ? (kpis.bestAsset.symbol || "—") : "—"}
               sub={showData ? pct(kpis.bestAsset.pct) : undefined}
               subColor="var(--color-success)"
@@ -302,7 +302,7 @@ function AnalyticsPage() {
             <KpiCard
               icon={<AlertTriangle className="h-4 w-4" />}
               iconColor="var(--color-loss)"
-              label="Worst Asset"
+              label="Lowest Return"
               value={showData ? (kpis.worstAsset.symbol || "—") : "—"}
               sub={showData ? pct(kpis.worstAsset.pct) : undefined}
               subColor={kpis.worstAsset.pct >= 0 ? "var(--color-success)" : "var(--color-loss)"}
@@ -341,6 +341,7 @@ function AnalyticsPage() {
                     minTickGap={60}
                   />
                   <YAxis
+                    domain={["auto", "auto"]}
                     tick={{ fontSize: 11, fill: "var(--color-muted-foreground)" }}
                     axisLine={false}
                     tickLine={false}
@@ -543,7 +544,7 @@ function AnalyticsPage() {
             SECTION 5 — Risk Visualization
         ═══════════════════════════════════════════════ */}
         <section id="analytics-risk">
-          <div className="rounded-xl border border-border bg-card overflow-hidden" style={{ boxShadow: "var(--shadow-card)" }}>
+          <div className="surface-card overflow-hidden" style={{ boxShadow: "var(--shadow-card)" }}>
             <div className="px-6 py-5 border-b border-border flex items-center gap-3">
               <div className="p-2 rounded-lg" style={{ background: "color-mix(in oklch, var(--color-chart-5) 12%, transparent)" }}>
                 <Shield className="h-4 w-4" style={{ color: "var(--color-chart-5)" }} />
@@ -600,9 +601,12 @@ function TooltipIcon({ text }: { text: string }) {
 
 function SectionLabel({ title, description }: { title: string; description: string }) {
   return (
-    <div className="mb-4">
-      <h2 className="text-lg font-semibold text-navy tracking-tight">{title}</h2>
-      <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+    <div className="mb-4 flex items-start gap-3">
+      <span className="mt-1 h-5 w-1 rounded-full bg-primary" aria-hidden />
+      <div>
+        <h2 className="text-lg font-semibold text-navy tracking-tight">{title}</h2>
+        <p className="text-xs text-muted-foreground mt-0.5">{description}</p>
+      </div>
     </div>
   );
 }
@@ -635,9 +639,8 @@ function KpiCard({
 
   return (
     <div
-      className="rounded-xl border border-border bg-card p-4 transition-all duration-200 hover:shadow-[var(--shadow-hover)] hover:-translate-y-0.5 group relative"
+      className="surface-card surface-card-hover p-4 hover:-translate-y-0.5 group relative"
       title={fullValue || tooltip}
-      style={{ boxShadow: "var(--shadow-card)" }}
       suppressHydrationWarning
     >
       <div
@@ -697,8 +700,7 @@ function ChartCard({
 }) {
   return (
     <div
-      className={`rounded-xl border border-border bg-card overflow-hidden ${className ?? ""}`}
-      style={{ boxShadow: "var(--shadow-card)" }}
+      className={`surface-card overflow-hidden ${className ?? ""}`}
     >
       <div className="px-5 py-4 border-b border-border flex items-center gap-2">
         <div className="flex-1">
@@ -738,8 +740,7 @@ function PerformersCard({
 }) {
   return (
     <div
-      className="rounded-xl border border-border bg-card overflow-hidden"
-      style={{ boxShadow: "var(--shadow-card)" }}
+      className="surface-card overflow-hidden"
     >
       <div className="px-5 py-4 border-b border-border flex items-center gap-2">
         {icon}
